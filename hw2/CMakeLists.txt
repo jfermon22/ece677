@@ -8,6 +8,8 @@ execute_process(COMMAND bash "-c" "module load openmpi")
 
 include_directories(${MPI_INCLUDE_PATH})
 
+set(CMAKE_BUILD_TYPE Debug)
+
 #define the applications names
 #-----------------------------
 set(PROJ_NAMES matrix_multiply)

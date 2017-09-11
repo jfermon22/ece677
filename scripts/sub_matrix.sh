@@ -7,7 +7,7 @@
 ###List of PI groups available to each user can be found with "va" command
 #PBS -W group_list=ece677fall17
 ###Request email when job begins and ends
-#PBS -m bea
+###PBS -m bea
 ###specify email address to use for notification
 #PBS -M fermon@email.arizona.edu
 ###set the queue
@@ -32,5 +32,5 @@ EXEC="matrix_multiply"
 cd ~/ece677/build_dir/$EXEC_DIR
 
 date 
-mpirun -n 1 $EXEC
+mpirun -n 10 $EXEC
 date 

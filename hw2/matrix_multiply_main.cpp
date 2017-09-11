@@ -1,92 +1,140 @@
-#include <stdio.h>
-#include <sys/time.h>
 #include "mpi.h"
-#define N               4        /* number of rows and columns in matrix */
+#include <stdio.h>
+#include <stdlib.h>
 
+#define NRA 4                 /* number of rows in matrix A */
+#define NCA 3                 /* number of columns in matrix A */
+#define NRB NCA                 /* number of columns in matrix A */
+#define NCB 4                  /* number of columns in matrix B */
+#define MASTER 0               /* taskid of first task */
+#define FROM_MASTER 1          /* setting a message type */
+#define FROM_WORKER 2          /* setting a message type */
+
+void printMatrix(int matrix[][NCA], int nCols, int nRows)
+{
+ for (int i=0; i<nRows; i++)
+      {
+         for (int j=0; j<nCols; j++) 
+            printf("%d   ", matrix[i][j]);
+         printf("\n");
+      }
+}
+
+void printMatrix(int matrix[][NCB], int nCols, int nRows)
+{
+ for (int i=0; i<nRows; i++)
+      {
+         for (int j=0; j<nCols; j++) 
+            printf("%d   ", matrix[i][j]);
+         printf("\n");
+      }
+}
+
+int main (int argc, char *argv[])
+{
+int	numtasks,              /* number of tasks in partition */
+	taskid,                /* a task identifier */
+	numworkers,            /* number of worker tasks */
+	source,                /* task id of message source */
+	dest,                  /* task id of message destination */
+	mtype,                 /* message type */
+	rows,                  /* rows of matrix A sent to each worker */
+	averow, extra, offset, /* used to determine rows sent to each worker */
+	i, j, k, rc;           /* misc */
+int	a[NRA][NCA],           /* matrix A to be multiplied */
+	b[NRB][NCB],           /* matrix B to be multiplied */
+	c[NRA][NCB];           /* result matrix C */
 MPI_Status status;
 
-double a[N][N],b[N][N],c[N][N];
-
-main(int argc, char **argv)
-{
-  int numtasks,taskid,numworkers,source,dest,rows,offset,i,j,k;
-
-  struct timeval start, stop;
-
-  MPI_Init(&argc, &argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, &taskid);
-  MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
-
-  numworkers = numtasks-1;
-
-  /*---------------------------- master ----------------------------*/
-  if (taskid == 0) {
-    for (i=0; i<N; i++) {
-      for (j=0; j<N; j++) {
-        a[i][j]= 1.0;
-        b[i][j]= 2.0;
-      }
-    }
-
-    gettimeofday(&start, 0);
-
-    /* send matrix data to the worker tasks */
-    rows = N/numworkers;
-    offset = 0;
-
-    for (dest=1; dest<=numworkers; dest++)
-    {
-      MPI_Send(&offset, 1, MPI_INT, dest, 1, MPI_COMM_WORLD);
-      MPI_Send(&rows, 1, MPI_INT, dest, 1, MPI_COMM_WORLD);
-      MPI_Send(&a[offset][0], rows*N, MPI_DOUBLE,dest,1, MPI_COMM_WORLD);
-      MPI_Send(&b, N*N, MPI_DOUBLE, dest, 1, MPI_COMM_WORLD);
-      offset = offset + rows;
-    }
-
-    /* wait for results from all worker tasks */
-    for (i=1; i<=numworkers; i++)
-    {
-      source = i;
-      MPI_Recv(&offset, 1, MPI_INT, source, 2, MPI_COMM_WORLD, &status);
-      MPI_Recv(&rows, 1, MPI_INT, source, 2, MPI_COMM_WORLD, &status);
-      MPI_Recv(&c[offset][0], rows*N, MPI_DOUBLE, source, 2, MPI_COMM_WORLD, &status);
-    }
-
-    gettimeofday(&stop, 0);
-
-    printf("Here is the result matrix:\n");
-    for (i=0; i<N; i++) {
-      for (j=0; j<N; j++)
-        printf("%6.2f   ", c[i][j]);
-      printf ("\n");
-    }
-
-    fprintf(stdout,"Time = %.6f\n\n",
-         (stop.tv_sec+stop.tv_usec*1e-6)-(start.tv_sec+start.tv_usec*1e-6));
-
+MPI_Init(&argc,&argv);
+MPI_Comm_rank(MPI_COMM_WORLD,&taskid);
+MPI_Comm_size(MPI_COMM_WORLD,&numtasks);
+if (numtasks < 2 ) {
+  printf("Need at least two MPI tasks. Quitting...\n");
+  MPI_Abort(MPI_COMM_WORLD, rc);
+  exit(1);
   }
+numworkers = numtasks-1;
 
-  /*---------------------------- worker----------------------------*/
-  if (taskid > 0) {
-    source = 0;
-    MPI_Recv(&offset, 1, MPI_INT, source, 1, MPI_COMM_WORLD, &status);
-    MPI_Recv(&rows, 1, MPI_INT, source, 1, MPI_COMM_WORLD, &status);
-    MPI_Recv(&a, rows*N, MPI_DOUBLE, source, 1, MPI_COMM_WORLD, &status);
-    MPI_Recv(&b, N*N, MPI_DOUBLE, source, 1, MPI_COMM_WORLD, &status);
 
-    /* Matrix multiplication */
-    for (k=0; k<N; k++)
-      for (i=0; i<rows; i++) {
-        c[i][k] = 0.0;
-        for (j=0; j<N; j++)
-          c[i][k] = c[i][k] + a[i][j] * b[j][k];
+/**************************** master task ************************************/
+   if (taskid == MASTER)
+   {
+      printf("mpi_mm has started with %d tasks.\n",numtasks);
+      printf("Initializing arrays...\n");
+      for (i=0; i<NRA; i++)
+         for (j=0; j<NCA; j++)
+            a[i][j]= i+j;
+      for (i=0; i<NRB; i++)
+         for (j=0; j<NCB; j++)
+            b[i][j]= i*j;
+            
+            
+       printf("Matrix A:\n");
+       printMatrix(a, NCA, NRA);
+       printf("\n");
+       printf("Matrix B:\n");
+       printMatrix(b, NCB, NRB);
+       printf("\n");
+
+      /* Send matrix data to the worker tasks */
+      averow = NRA/numworkers;
+      extra = NRA%numworkers;
+      offset = 0;
+      mtype = FROM_MASTER;
+      for (dest=1; dest<=numworkers; dest++)
+      {
+         rows = (dest <= extra) ? averow+1 : averow;   	
+         printf("Sending %d rows to task %d offset=%d\n",rows,dest,offset);
+         MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         MPI_Send(&rows, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         MPI_Send(&a[offset][0], rows*NCA, MPI_DOUBLE, dest, mtype,
+                   MPI_COMM_WORLD);
+         MPI_Send(&b, NCA*NCB, MPI_DOUBLE, dest, mtype, MPI_COMM_WORLD);
+         offset = offset + rows;
       }
 
+      /* Receive results from worker tasks */
+      mtype = FROM_WORKER;
+      for (i=1; i<=numworkers; i++)
+      {
+         source = i;
+         MPI_Recv(&offset, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         MPI_Recv(&rows, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         MPI_Recv(&c[offset][0], rows*NCB, MPI_DOUBLE, source, mtype, 
+                  MPI_COMM_WORLD, &status);
+         printf("Received results from task %d\n",source);
+      }
 
-    MPI_Send(&offset, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-    MPI_Send(&rows, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-    MPI_Send(&c, rows*N, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD);
-  }
+      /* Print results */
+      printf("******************************************************\n");
+      printf("Result Matrix:\n");
+      printMatrix(b, NCB, NRA);
+      printf("\n******************************************************\n");
+      printf ("Done.\n");
+   }
 
-  MPI_Finalize();
+
+/**************************** worker task ************************************/
+   if (taskid > MASTER)
+   {
+      mtype = FROM_MASTER;
+      MPI_Recv(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+      MPI_Recv(&rows, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+      MPI_Recv(&a, rows*NCA, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD, &status);
+      MPI_Recv(&b, NCA*NCB, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD, &status);
+
+      for (k=0; k<NCB; k++)
+         for (i=0; i<rows; i++)
+         {
+            c[i][k] = 0.0;
+            for (j=0; j<NCA; j++)
+               c[i][k] = c[i][k] + a[i][j] * b[j][k];
+         }
+      mtype = FROM_WORKER;
+      MPI_Send(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+      MPI_Send(&rows, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+      MPI_Send(&c, rows*NCB, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD);
+   }
+   MPI_Finalize();
 }
