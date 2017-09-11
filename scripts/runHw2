@@ -1,0 +1,76 @@
+#!/bin/bash
+
+PROJ_1="matrix_multiply"
+#PROJ_2="TiledMatrixMultiplication"
+
+RUNSC1="sub_matrix.sh"
+#RUNSC2="lsf_tiled_mul.sh"
+
+ERR_OUT1="$PROJ_1.e"
+CONS_OUT1="$PROJ_1.o"
+#OUT2="tiled_mul_output.txt"
+
+SCENARIOS="1"
+
+FAILED_SCENARIOS=false
+#parse command line args
+if [[ $@ != "" ]]; then
+   SCENARIOS=$@
+fi
+
+echo "SCENARIOS set to $SCENARIOS"
+
+for SCENARIO in $SCENARIOS; do
+   #set the arguemnts for the scenario
+   case $SCENARIO in
+      1)
+         PROJECT=$PROJ_1
+         RUNSCRIPT=$RUNSC1
+         ERR_OUTPUT_FILE=$ERR_OUT1
+         CONS_OUTPUT_FILE=$CONS_OUT1
+         ;;
+      2)
+         PROJECT=$PROJ_2
+         RUNSCRIPT=$RUNSC2
+         ERR_OUTPUT_FILE=$ERR_OUT2
+         CONS_OUTPUT_FILE=$CONS_OUT2
+         ;;
+      *)
+        echo "solution $SCENARIO does not exist. Exiting"
+        exit 1
+        ;;
+   esac
+
+   #loop through the data sets
+   for RUN in 0; do 
+      echo "-------------------------"
+      echo "$PROJECT::$RUN"
+      
+      #cleanup old runs
+      for FILE in $PROJECT.e* $PROJECT.o*
+         do
+         if [ -e $FILE ]; then
+            rm $FILE
+         fi
+      done
+      
+      #submit the job to the queue
+      PROC_NAME=`qsub $RUNSCRIPT`
+      PROC_ID=`echo $PROC_NAME | awk -F. '{print $1}'`
+      echo "-------------------------"
+      
+      sleep 1
+      
+      echo "Job in queue: `qjobs`"
+      echo "Error Output: $ERR_OUTPUT_FILE$PROC_ID"
+      echo "Consl Output: $CONS_OUTPUT_FILE$PROC_ID"
+      
+      #output the solution line and capture it
+      while [ ! -e $ERR_OUTPUT_FILE$PROC_ID ] || [ ! -e $CONS_OUTPUT_FILE$PROC_ID ]; do
+            sleep 1
+      done
+      
+   done #end of data set
+
+done #end of scneario
+
