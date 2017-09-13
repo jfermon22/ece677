@@ -2,139 +2,173 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NRA 4                 /* number of rows in matrix A */
-#define NCA 3                 /* number of columns in matrix A */
-#define NRB NCA                 /* number of columns in matrix A */
-#define NCB 4                  /* number of columns in matrix B */
-#define MASTER 0               /* taskid of first task */
-#define FROM_MASTER 1          /* setting a message type */
-#define FROM_WORKER 2          /* setting a message type */
+#define ROWS_A 4                 /* number of nRows in matrix A */
+#define COLS_A 3                 /* number of columns in matrix A */
+#define ROWS_B COLS_A            /* number of nRows in matrix B */
+#define COLS_B 4                 /* number of columns in matrix B */
+#define MASTER_THREAD_ID 0
 
-void printMatrix(int matrix[][NCA], int nCols, int nRows)
+enum MessageProvider { MASTER, SLAVE, };
+
+void populateMatrix(int matrix[][COLS_A], int nCols, int nRows)
 {
- for (int i=0; i<nRows; i++)
-      {
-         for (int j=0; j<nCols; j++) 
-            printf("%d   ", matrix[i][j]);
-         printf("\n");
-      }
+for (uint i = 0; i < nRows; i++)
+{
+	for (uint j = 0; j < nCols; j++)
+	{
+		matrix[i][j] = i + j;
+	}
+}
 }
 
-void printMatrix(int matrix[][NCB], int nCols, int nRows)
+void populateMatrix(int matrix[][COLS_B], int nCols, int nRows)
 {
- for (int i=0; i<nRows; i++)
-      {
-         for (int j=0; j<nCols; j++) 
-            printf("%d   ", matrix[i][j]);
-         printf("\n");
-      }
+for (uint i = 0; i < nRows; i++)
+{
+	for (uint j = 0; j < nCols; j++)
+	{
+		matrix[i][j] = i * j;
+	}
+}
 }
 
-int main (int argc, char *argv[])
+void printMatrix(int matrix[][COLS_A], int nCols, int nRows)
 {
-int	numtasks,              /* number of tasks in partition */
-	taskid,                /* a task identifier */
-	numworkers,            /* number of worker tasks */
-	source,                /* task id of message source */
-	dest,                  /* task id of message destination */
-	mtype,                 /* message type */
-	rows,                  /* rows of matrix A sent to each worker */
-	averow, extra, offset, /* used to determine rows sent to each worker */
-	i, j, k, rc;           /* misc */
-int	a[NRA][NCA],           /* matrix A to be multiplied */
-	b[NRB][NCB],           /* matrix B to be multiplied */
-	c[NRA][NCB];           /* result matrix C */
+for (int i = 0; i < nRows; i++)
+{
+	for (int j = 0; j < nCols; j++)
+		printf("%d   ", matrix[i][j]);
+	printf("\n");
+}
+}
+
+void printMatrix(int matrix[][COLS_B], int nCols, int nRows)
+{
+for (int i = 0; i < nRows; i++)
+{
+	for (int j = 0; j < nCols; j++)
+		printf("%d   ", matrix[i][j]);
+	printf("\n");
+}
+}
+
+int main(int argc, char *argv[])
+{
+
+int nThreads; //total number of threads operating
+int nThreadId; //current instance ID
+
+MPI_Init(&argc, &argv);
+MPI_Comm_rank(MPI_COMM_WORLD, &nThreadId);
+MPI_Comm_size(MPI_COMM_WORLD, &nThreads);
+if (nThreads < 2)
+{
+	printf("Need at least two MPI tasks. Quitting...\n");
+	int rc;
+	MPI_Abort(MPI_COMM_WORLD, rc);
+	exit(1);
+}
+
 MPI_Status status;
+int a[ROWS_A][COLS_A]; // input matrix a
+int b[ROWS_B][COLS_B]; // input matrix B
+int c[ROWS_A][COLS_B]; // output matrix c
 
-MPI_Init(&argc,&argv);
-MPI_Comm_rank(MPI_COMM_WORLD,&taskid);
-MPI_Comm_size(MPI_COMM_WORLD,&numtasks);
-if (numtasks < 2 ) {
-  printf("Need at least two MPI tasks. Quitting...\n");
-  MPI_Abort(MPI_COMM_WORLD, rc);
-  exit(1);
-  }
-numworkers = numtasks-1;
+if (nThreadId == MASTER_THREAD_ID)
+{
+	//executed by the master
+	printf("matrix multiply has started with %d tasks.\n", nThreads);
+	printf("Initializing arrays...\n");
 
+	// initialize the arrays
+	populateMatrix(a, COLS_A, ROWS_A);
+	populateMatrix(b, COLS_B, ROWS_B);
 
-/**************************** master task ************************************/
-   if (taskid == MASTER)
-   {
-      printf("mpi_mm has started with %d tasks.\n",numtasks);
-      printf("Initializing arrays...\n");
-      for (i=0; i<NRA; i++)
-         for (j=0; j<NCA; j++)
-            a[i][j]= i+j;
-      for (i=0; i<NRB; i++)
-         for (j=0; j<NCB; j++)
-            b[i][j]= i*j;
-            
-            
-       printf("Matrix A:\n");
-       printMatrix(a, NCA, NRA);
-       printf("\n");
-       printf("Matrix B:\n");
-       printMatrix(b, NCB, NRB);
-       printf("\n");
+	//print the arrays
+	printf("Matrix A:\n");
+	printMatrix(a, COLS_A, ROWS_A);
+	printf("\n");
+	printf("Matrix B:\n");
+	printMatrix(b, COLS_B, ROWS_B);
+	printf("\n");
 
-      /* Send matrix data to the worker tasks */
-      averow = NRA/numworkers;
-      extra = NRA%numworkers;
-      offset = 0;
-      mtype = FROM_MASTER;
-      for (dest=1; dest<=numworkers; dest++)
-      {
-         rows = (dest <= extra) ? averow+1 : averow;   	
-         printf("Sending %d rows to task %d offset=%d\n",rows,dest,offset);
-         MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
-         MPI_Send(&rows, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
-         MPI_Send(&a[offset][0], rows*NCA, MPI_DOUBLE, dest, mtype,
-                   MPI_COMM_WORLD);
-         MPI_Send(&b, NCA*NCB, MPI_DOUBLE, dest, mtype, MPI_COMM_WORLD);
-         offset = offset + rows;
-      }
+	uint nWorkerThreads = nThreads - 1;
+	int averow = ROWS_A / nWorkerThreads;
+	int extra = ROWS_A % nWorkerThreads;
+	int offset(0);
+	int nRows(0);
+	//send data to slaves
+	MessageProvider nProvider = MASTER;
+	for (uint nRecvrThreadId = 1; nRecvrThreadId <= nWorkerThreads;
+			nRecvrThreadId++)
+	{
+		nRows = (nRecvrThreadId <= extra) ? averow + 1 : averow;
+		printf("Sending %d rows to task %d offset=%d\n", nRows, nRecvrThreadId,
+				offset);
+		MPI_Send(&offset, 1, MPI_INT, nRecvrThreadId, nProvider,
+				MPI_COMM_WORLD);
+		MPI_Send(&nRows, 1, MPI_INT, nRecvrThreadId, nProvider, MPI_COMM_WORLD);
+		MPI_Send(&a[offset][0], nRows * COLS_A, MPI_INT, nRecvrThreadId, nProvider,
+				MPI_COMM_WORLD);
+		MPI_Send(&b, COLS_A * COLS_B, MPI_INT, nRecvrThreadId, nProvider,
+				MPI_COMM_WORLD);
+		offset = offset + nRows;
+	}
 
-      /* Receive results from worker tasks */
-      mtype = FROM_WORKER;
-      for (i=1; i<=numworkers; i++)
-      {
-         source = i;
-         MPI_Recv(&offset, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
-         MPI_Recv(&rows, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
-         MPI_Recv(&c[offset][0], rows*NCB, MPI_DOUBLE, source, mtype, 
-                  MPI_COMM_WORLD, &status);
-         printf("Received results from task %d\n",source);
-      }
+	//receive results from slave threads
+	nProvider = SLAVE;
+	for (uint i = 1; i <= nWorkerThreads; i++)
+	{
+		int source = i;
+		MPI_Recv(&offset, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
+				&status);
+		MPI_Recv(&nRows, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
+				&status);
+		MPI_Recv(&c[offset][0], nRows * COLS_B, MPI_INT, source, nProvider,
+				MPI_COMM_WORLD, &status);
+		printf("Received results from task %d\n", source);
+	}
 
-      /* Print results */
-      printf("******************************************************\n");
-      printf("Result Matrix:\n");
-      printMatrix(b, NCB, NRA);
-      printf("\n******************************************************\n");
-      printf ("Done.\n");
-   }
+	/* Print results */
+	printf("******************************************************\n");
+	printf("Result Matrix:\n");
+	printMatrix(c, COLS_B, ROWS_A);
+	printf("\n******************************************************\n");
+	printf("Done.\n");
+}
+else
+{
+	//executed by the workers
+	MessageProvider nProvider = MASTER;
 
+	int nRows(0);
+	int offset(0);
+	//receive the data from master
+	MPI_Recv(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD, &status);
+	MPI_Recv(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD, &status);
+	MPI_Recv(&a, nRows * COLS_A, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
+			&status);
+	MPI_Recv(&b, COLS_A * COLS_B, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
+			&status);
 
-/**************************** worker task ************************************/
-   if (taskid > MASTER)
-   {
-      mtype = FROM_MASTER;
-      MPI_Recv(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-      MPI_Recv(&rows, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-      MPI_Recv(&a, rows*NCA, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD, &status);
-      MPI_Recv(&b, NCA*NCB, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD, &status);
+	//do the multiplication
+	for (uint k = 0; k < COLS_B; k++)
+	{
+		for (uint i = 0; i < nRows; i++)
+		{
+			c[i][k] = 0;
+			for (uint j= 0; j < COLS_B; j++)
+			{
+				c[i][k] = c[i][k] + a[i][j] * b[j][k];
+			}
+		}
+	}
 
-      for (k=0; k<NCB; k++)
-         for (i=0; i<rows; i++)
-         {
-            c[i][k] = 0.0;
-            for (j=0; j<NCA; j++)
-               c[i][k] = c[i][k] + a[i][j] * b[j][k];
-         }
-      mtype = FROM_WORKER;
-      MPI_Send(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
-      MPI_Send(&rows, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
-      MPI_Send(&c, rows*NCB, MPI_DOUBLE, MASTER, mtype, MPI_COMM_WORLD);
-   }
-   MPI_Finalize();
+	//send the data back to the master
+	nProvider = SLAVE;
+	MPI_Send(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+	MPI_Send(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+	MPI_Send(&c, nRows * COLS_B, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+}
+MPI_Finalize();
 }

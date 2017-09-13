@@ -13,7 +13,7 @@
 ###set the queue
 #PBS -q windfall
 #Set the number of nodes, cores, and memory that will be used for this job
-#PBS -l select=1:ncpus=28:mem=1mb
+#PBS -l select=1:ncpus=28:mem=1kb
 ###specify total cpu time required for this job, hhh:mm:ss
 #PBS -l walltime=0:5:0
 ###total cputime = walltime * ncpus

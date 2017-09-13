@@ -12,7 +12,7 @@ set(CMAKE_BUILD_TYPE Debug)
 
 #define the applications names
 #-----------------------------
-set(PROJ_NAMES matrix_multiply)
+set(PROJ_NAMES matrix_multiply mean_filter)
 
 foreach(SINGLE_PROJ ${PROJ_NAMES})
    add_executable(${SINGLE_PROJ} ${SINGLE_PROJ}_main.cpp)
