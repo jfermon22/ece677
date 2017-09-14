@@ -1,7 +1,12 @@
 
 *~
 
+
 build_dir
 
 *.e*
 *.o*
+.cproject
+.project
+dataset_generator.cpp
+

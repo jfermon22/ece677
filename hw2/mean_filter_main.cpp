@@ -1,168 +1,249 @@
+#include "mpi.h"
+#include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <mpi.h>
-#include <assert.h>
-#include <time.h>
-#include <iostream>
-#include <string>
-#include <algorithm>
-#include <vector>
 
-void mean_filter(uint32_t *buff, int width, int height, int windowSize)
+#define ROWS_WIN 3                 /* number of nRows in matrix A */
+#define COLS_WIN 3                 /* number of columns in matrix A */
+#define ROWS_MATRIX 4           /* number of nRows in matrix B */
+#define COLS_MATRIX 4                 /* number of columns in matrix B */
+const uint ROWS_OUT = (ROWS_MATRIX - ROWS_WIN) + 1;
+const uint COLS_OUT = (COLS_MATRIX - COLS_WIN) + 1;
+#define MASTER_THREAD_ID 0
+
+enum MessageProvider
 {
-	std::vector < uint32_t > tmp_data;
-	for (int i = 0; i < width * height; i++)
-		tmp_data.push_back(buff[i]);
+	MASTER, SLAVE,
+};
 
-	int edgex = windowSize / 2;
-	int edgey = windowSize / 2;
-
-	for (int x = 0; x < width; x++)
+void populateMatrix(int *matrix, int nCols, int nRows, int matrixNum)
+{
+	for (uint i = 0; i < nRows; i++)
 	{
-		for (int y = 0; y < height; y++)
+		for (uint j = 0; j < nCols; j++)
 		{
-			double sum = 0;
-			int count = 0;
-			for (int fx = 0; fx < windowSize; fx++)
+			if (matrixNum == 1)
 			{
-				for (int fy = 0; fy < windowSize; fy++)
-				{
-					int yy = y + fy - edgey;
-					int xx = x + fx - edgex;
-					if (yy < 0 || yy >= height || xx < 0 || xx >= width)
-						continue;
-					sum += (double) tmp_data.at((yy * width) + xx);
-					count++;
-				}
+				matrix[i * nCols + j] = i + j;
 			}
-			assert(count != 0);
-			buff[(width * y) + x] = (uint32_t)(sum / count);
+			else
+			{
+				matrix[i * nCols + j] = i * j;
+			}
 		}
 	}
+}
+
+void printMatrix(int *matrix, int nCols, int nRows)
+{
+	for (int i = 0; i < nRows; i++)
+	{
+		for (int j = 0; j < nCols; j++)
+			printf("%d   ", matrix[i * nCols + j]);
+		printf("\n");
+	}
+}
+
+#define value(arry, i, j, width) arry[(i)*width + (j)]
+
+void compute(int *output, int *input0, int *input1, int /*numARows*/,
+		int numAColumns, int /*numBRows*/, int numBColumns, int numCRows,
+		int numCColumns)
+{
+
+#define A(i, j) value(input0, i, j, numAColumns)
+#define B(i, j) value(input1, i, j, numBColumns)
+#define C(i, j) value(output, i, j, numCColumns)
+	int ii, jj, kk;
+	for (ii = 0; ii < numCRows; ++ii)
+	{
+		for (jj = 0; jj < numCColumns; ++jj)
+		{
+			float sum = 0;
+			for (kk = 0; kk < numAColumns; ++kk)
+			{
+				/* debuggin for indexes */
+				//   printf("%f * %f\n",A(ii, kk),B(kk, jj));
+				sum += A(ii, kk)* B(kk, jj);
+			}
+			C(ii, jj)= sum;
+
+			// printf("writing %f to %d and %d \n", sum, ii,jj);
+
+		}
+	}
+#undef A
+#undef B
+#undef C
+}
+
+void createArrays(int *a, int *b)
+{
+	// initialize the arrays
+	populateMatrix(a, COLS_WIN, ROWS_WIN, 1);
+	populateMatrix(b, COLS_MATRIX, ROWS_MATRIX, 2);
+
+	//print the arrays
+	printf("Matrix A:\n");
+	printMatrix(a, COLS_WIN, ROWS_WIN);
+	printf("\n");
+	printf("Matrix B:\n");
+	printMatrix(b, COLS_MATRIX, ROWS_MATRIX);
+	printf("\n");
+}
+
+void runSerial()
+{
+	int a[ROWS_WIN * COLS_WIN]; // input matrix a
+	int b[ROWS_MATRIX * COLS_MATRIX]; // input matrix B
+	int c[ROWS_WIN * COLS_MATRIX]; // output matrix c
+
+	printf("***Running Serial Version***\n");
+
+	createArrays(a, b);
+
+	compute(c, a, b, ROWS_WIN, COLS_WIN, ROWS_MATRIX, COLS_MATRIX, ROWS_WIN,
+			COLS_MATRIX);
+
+	//Print results
+	printf("Output Matrix:\n");
+	printMatrix(c, COLS_MATRIX, ROWS_WIN);
+}
+
+void runParallel()
+{
+	int a[ROWS_WIN * COLS_WIN]; // input matrix a
+	int b[ROWS_MATRIX * COLS_MATRIX]; // input matrix B
+	int c[ROWS_WIN * COLS_MATRIX]; // output matrix c'
+	int nThreads; //total number of threads operating
+	int nThreadId; //current instance ID
+
+	MPI_Comm_rank(MPI_COMM_WORLD, &nThreadId);
+	MPI_Comm_size(MPI_COMM_WORLD, &nThreads);
+	if (nThreads < 2)
+	{
+		printf("Need at least two MPI tasks. Quitting...\n");
+		int rc;
+		MPI_Abort(MPI_COMM_WORLD, rc);
+		exit(1);
+	}
+
+	MPI_Status status;
+
+	if (nThreadId == MASTER_THREAD_ID)
+	{
+		printf("***Running Parallel Version***\n");
+
+		createArrays(a, b);
+
+		//executed by the master
+		printf("Application running with %d threads.\n", nThreads);
+		//printf("Initializing arrays...\n");
+
+		uint nWorkerThreads = nThreads - 1;
+		int averow = ROWS_WIN / nWorkerThreads;
+		int extra = ROWS_WIN % nWorkerThreads;
+		int offset(0);
+		int nRows(0);
+		//send data to slaves
+		MessageProvider nProvider = MASTER;
+		for (uint nRecvrThreadId = 1; nRecvrThreadId <= nWorkerThreads;
+				nRecvrThreadId++)
+		{
+			nRows = (nRecvrThreadId <= extra) ? averow + 1 : averow;
+			//printf("Sending %d rows to task %d offset=%d\n", nRows, nRecvrThreadId,
+			//		offset);
+			MPI_Send(&offset, 1, MPI_INT, nRecvrThreadId, nProvider,
+					MPI_COMM_WORLD);
+			MPI_Send(&nRows, 1, MPI_INT, nRecvrThreadId, nProvider,
+					MPI_COMM_WORLD);
+			MPI_Send(&a[offset * COLS_WIN], nRows * COLS_WIN, MPI_INT,
+					nRecvrThreadId, nProvider, MPI_COMM_WORLD);
+			MPI_Send(&b, COLS_WIN * COLS_MATRIX, MPI_INT, nRecvrThreadId,
+					nProvider, MPI_COMM_WORLD);
+			offset = offset + nRows;
+		}
+
+		//receive results from slave threads
+		nProvider = SLAVE;
+		for (uint i = 1; i <= nWorkerThreads; i++)
+		{
+			int source = i;
+			MPI_Recv(&offset, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
+					&status);
+			MPI_Recv(&nRows, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
+					&status);
+			MPI_Recv(&c[offset * COLS_MATRIX], nRows * COLS_MATRIX, MPI_INT,
+					source, nProvider, MPI_COMM_WORLD, &status);
+			//printf("Received results from task %d\n", source);
+		}
+
+		//Print results
+		printf("Output Matrix:\n");
+		printMatrix(c, COLS_MATRIX, ROWS_WIN);
+
+	}
+	else
+	{
+		//executed by the workers
+		MessageProvider nProvider = MASTER;
+
+		int nRows(0);
+		int offset(0);
+		//receive the data from master
+		MPI_Recv(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
+				&status);
+		MPI_Recv(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
+				&status);
+		MPI_Recv(&a, nRows * COLS_WIN, MPI_INT, MASTER, nProvider,
+				MPI_COMM_WORLD, &status);
+		MPI_Recv(&b, COLS_WIN * COLS_MATRIX, MPI_INT, MASTER, nProvider,
+				MPI_COMM_WORLD, &status);
+
+		//do the multiplication
+		for (uint k = 0; k < COLS_MATRIX; k++)
+		{
+			for (uint i = 0; i < nRows; i++)
+			{
+				c[i * nRows + k] = 0;
+				for (uint j = 0; j < COLS_MATRIX; j++)
+				{
+					c[i * nRows + k] = c[i * nRows + k]
+							+ a[i * COLS_WIN + j] * b[j * COLS_MATRIX + k];
+				}
+			}
+		}
+
+		//send the data back to the master
+		nProvider = SLAVE;
+		MPI_Send(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+		MPI_Send(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+		MPI_Send(&c, nRows * COLS_MATRIX, MPI_INT, MASTER, nProvider,
+				MPI_COMM_WORLD);
+	}
+
 }
 
 int main(int argc, char *argv[])
 {
-
-	int rank, namelen, numprocs, i;
-	char processor_name[MPI_MAX_PROCESSOR_NAME];
-
-	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	MPI_Get_processor_name(processor_name, &namelen);
-	MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
-	std::string inFilename(argv[1]);
-	std::string outFilename(argv[2]);
-	std::string filterType(argv[3]);
-	int windowSize = atoi(argv[4]);
-	int orig_height;
-	int orig_width, chunk_size;
-	outFilename = "p_" + outFilename;
-
-	uint32_t *dataPointer;
-	int upperRows = windowSize / 2;
-	int lowerRows = windowSize - (windowSize / 2);
-	int tmpUR = 0, tmpLR = 0;
-	int chunk_sum = 0, scount[numprocs], displs[numprocs];
-	time_t cur_time;
-	struct tm *mytime;
-	if (rank == 0)
+	bool bUseSerial(false);
+	for (int i = 1; i < argc; i++)
 	{
-		orig_height = 256;
-		orig_width = 256;
-		chunk_size = orig_height / numprocs;
-
-		dataPointer = (uint32_t *) malloc(
-				sizeof(uint32_t) * (orig_height * orig_width));
-		//dataPointer = output.getData();
-
-		for (i = 0; i < numprocs - 1; i++)
+		if (strcmp(argv[i], "--serial") == 0)
 		{
-			tmpUR = (i == 0 ? 0 : upperRows);
-			tmpLR = lowerRows;
-			scount[i] = (chunk_size + tmpUR + tmpLR) * orig_width;
-			if (i == 0)
-				displs[i] = i * chunk_size * orig_width;
-			else
-				displs[i] = ((i * chunk_size) - tmpUR) * orig_width;
-			chunk_sum += (chunk_size);
-
+			bUseSerial = true;
 		}
-		tmpUR = upperRows;
-		scount[i] = (orig_height - chunk_sum + tmpUR) * orig_width;
-		displs[i] = ((i * chunk_size) - tmpUR) * orig_width;
-
 	}
-	MPI_Bcast(&orig_height, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&orig_width, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&chunk_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-	int recvcount;
-
-	if (numprocs == 1)
-		recvcount = chunk_size;
-	else if (rank == numprocs - 1)
-		recvcount = orig_height - ((numprocs - 1) * chunk_size) + upperRows;
-	else if (rank == 0)
-		recvcount = chunk_size + lowerRows;
-	else
-		recvcount = chunk_size + upperRows + lowerRows;
-
-	recvcount *= orig_width;
-	uint32_t *rbuf = (uint32_t *) malloc(sizeof(uint32_t) * recvcount);
-
-	MPI_Scatterv(dataPointer, scount, displs, MPI_UNSIGNED, rbuf, recvcount,
-			MPI_UNSIGNED, 0, MPI_COMM_WORLD);
-
-	time(&cur_time);
-	mytime = localtime(&cur_time);
-	std::cout << mytime->tm_hour << ":" << mytime->tm_min << ":"
-			<< mytime->tm_sec << " " << processor_name
-			<< ": received image size " << orig_width << ","
-			<< recvcount / orig_width << std::endl;
-
-	std::cout << "[" << processor_name << "] processing with filter: "
-			<< filterType << " window size: " << windowSize << std::endl;
-
-	mean_filter(rbuf, orig_width, (int) (recvcount / orig_width), windowSize);
-
-	int offset;
-
-	if (rank == (numprocs - 1))
-		recvcount = orig_height - ((numprocs - 1) * chunk_size);
-	else
-		recvcount = chunk_size;
-
-	recvcount *= orig_width;
-
-	if (rank == 0)
-		offset = 0;
-	else
-		offset = upperRows * orig_width;
-
-	if (rank == 0)
+	if (bUseSerial)
 	{
-		chunk_sum = 0;
-		for (i = 0; i < numprocs - 1; i++)
-		{
-			scount[i] = chunk_size * orig_width;
-			displs[i] = i * chunk_size * orig_width;
-		}
-		scount[i] = (orig_height - (i * chunk_size)) * orig_width;
-		displs[i] = i * chunk_size * orig_width;
+		runSerial();
 	}
-	time(&cur_time);
-	mytime = localtime(&cur_time);
-	std::cout << mytime->tm_hour << ":" << mytime->tm_min << ":"
-			<< mytime->tm_sec << " [" << processor_name
-			<< "]: send image to manager " << std::endl;
-	MPI_Gatherv(rbuf + offset, recvcount, MPI_UNSIGNED, dataPointer, scount,
-			displs, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
-
-	if (rank == 0)
+	else
 	{
-		std::cout << "[" << processor_name << "] saving image: " << outFilename
-				<< std::endl;
+		MPI_Init(&argc, &argv);
+		runParallel();
+		MPI_Finalize();
 	}
-	free(rbuf);
-	std::cout << "-- done --" << std::endl;
 }
+
+
