@@ -1,6 +1,7 @@
 #include "mpi.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "MatrixUtilities.h"
 
 #define ROWS_WIN 3                 /* number of nRows in matrix A */
 #define COLS_WIN 3                 /* number of columns in matrix A */
@@ -10,77 +11,19 @@ const uint ROWS_OUT = (ROWS_MATRIX - ROWS_WIN) + 1;
 const uint COLS_OUT = (COLS_MATRIX - COLS_WIN) + 1;
 #define MASTER_THREAD_ID 0
 
+using namespace MatrixUtilSpace;
+
 enum MessageProvider
 {
 	MASTER, SLAVE,
 };
 
-void populateMatrix(int *matrix, int nCols, int nRows, int matrixNum)
-{
-	for (uint i = 0; i < nRows; i++)
-	{
-		for (uint j = 0; j < nCols; j++)
-		{
-			if (matrixNum == 1)
-			{
-				matrix[i * nCols + j] = i + j;
-			}
-			else
-			{
-				matrix[i * nCols + j] = i * j;
-			}
-		}
-	}
-}
-
-void printMatrix(int *matrix, int nCols, int nRows)
-{
-	for (int i = 0; i < nRows; i++)
-	{
-		for (int j = 0; j < nCols; j++)
-			printf("%d   ", matrix[i * nCols + j]);
-		printf("\n");
-	}
-}
-
-#define value(arry, i, j, width) arry[(i)*width + (j)]
-
-void compute(int *output, int *input0, int *input1, int /*numARows*/,
-		int numAColumns, int /*numBRows*/, int numBColumns, int numCRows,
-		int numCColumns)
-{
-
-#define A(i, j) value(input0, i, j, numAColumns)
-#define B(i, j) value(input1, i, j, numBColumns)
-#define C(i, j) value(output, i, j, numCColumns)
-	int ii, jj, kk;
-	for (ii = 0; ii < numCRows; ++ii)
-	{
-		for (jj = 0; jj < numCColumns; ++jj)
-		{
-			float sum = 0;
-			for (kk = 0; kk < numAColumns; ++kk)
-			{
-				/* debuggin for indexes */
-				//   printf("%f * %f\n",A(ii, kk),B(kk, jj));
-				sum += A(ii, kk)* B(kk, jj);
-			}
-			C(ii, jj)= sum;
-
-			// printf("writing %f to %d and %d \n", sum, ii,jj);
-
-		}
-	}
-#undef A
-#undef B
-#undef C
-}
 
 void createArrays(int *a, int *b)
 {
 	// initialize the arrays
-	populateMatrix(a, COLS_WIN, ROWS_WIN, 1);
-	populateMatrix(b, COLS_MATRIX, ROWS_MATRIX, 2);
+	populateMatrix(a, COLS_WIN, ROWS_WIN, ADD_OFFSETS);
+	populateMatrix(b, COLS_MATRIX, ROWS_MATRIX, INCREMENT_OFFSET);
 
 	//print the arrays
 	printf("Matrix A:\n");
@@ -101,8 +44,8 @@ void runSerial()
 
 	createArrays(a, b);
 
-	compute(c, a, b, ROWS_WIN, COLS_WIN, ROWS_MATRIX, COLS_MATRIX, ROWS_WIN,
-			COLS_MATRIX);
+	//ComputeSerial(c, a, b, ROWS_WIN, COLS_WIN, ROWS_MATRIX, COLS_MATRIX, ROWS_WIN,
+	//		COLS_MATRIX);
 
 	//Print results
 	printf("Output Matrix:\n");
