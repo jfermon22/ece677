@@ -30,6 +30,8 @@ void populateMatrix(int *matrix, int nCols, int nRows, MatrixType type)
 				break;
 			case INCREMENT_OFFSET:
 				matrix[i * nCols + j] = nOffset++;
+				if (nOffset > 25)
+					nOffset = 0;
 				break;
 			}
 		}

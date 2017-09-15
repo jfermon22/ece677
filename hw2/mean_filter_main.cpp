@@ -5,8 +5,8 @@
 #include "MatrixUtilities.h"
 
 #define WINDOW 3                 /* number of nRows in matrix A */
-#define ROWS_MATRIX 4           /* number of nRows in matrix B */
-#define COLS_MATRIX 4                 /* number of columns in matrix B */
+#define ROWS_MATRIX 256           /* number of nRows in matrix B */
+#define COLS_MATRIX ROWS_MATRIX                 /* number of columns in matrix B */
 const uint ROWS_OUT = (ROWS_MATRIX - WINDOW) + 1;
 const uint COLS_OUT = (COLS_MATRIX - WINDOW) + 1;
 #define MASTER_THREAD_ID 0
@@ -29,37 +29,51 @@ void createArray(int *a)
 	printf("\n");
 }
 
-void ComputeSerial(int *out, int *in, int window, int nRowsIn, int nColsIn,
+void Compute(int *out, int *in, int window, int nRowsIn, int nColsIn,
 		int nRowsOut, int nColsOut)
 {
+
+	//printf(
+	//		"Called with args window %d, nRowsIn %d, nColsIn %d, nRowsOut %d, nColsOut %d \n",
+	//		window, nRowsIn, nColsIn, nRowsOut, nColsOut);
+
 	//loop through rows in input matrix
-	for (uint nRowIdxIn(0); nRowIdxIn <= nRowsIn - window; nRowIdxIn++)
+	for (int nRowIdxIn(0); nRowIdxIn <= nRowsIn - window; nRowIdxIn++)
 	{
+		//printf("Rows in %d:  %d<= %d\n ", nRowsIn, nRowIdxIn, nRowsIn - window);
 		//loop through indeces in row of input matrix
-		for (uint nColIdxIn(0); nColIdxIn <= nColsIn - window; nColIdxIn++)
+		for (int nColIdxIn(0); nColIdxIn <= nColsIn - window; nColIdxIn++)
 		{
 			//generate output matrix offset
-			uint nOffsetOut = nRowIdxIn * (nRowsIn - window + 1) + nColIdxIn;
+			uint nOffsetOut = nRowIdxIn * nColsOut + nColIdxIn;
 
 			out[nOffsetOut] = 0;
 			//loop through rows in window
-			for (uint nRowIdxWin(0); nRowIdxWin < window; nRowIdxWin++)
+			for (int nRowIdxWin(0); nRowIdxWin < window; nRowIdxWin++)
 			{
 				//loop through items in row in window
-				for (uint nColIdxWin(0); nColIdxWin < window; nColIdxWin++)
+				for (int nColIdxWin(0); nColIdxWin < window; nColIdxWin++)
 				{
 					//generate in matrix offset
 					uint nOffsetIn = (nRowIdxIn + nRowIdxWin) * nColsIn
 							+ (nColIdxIn + nColIdxWin);
 					//add current offset to index
+
 					out[nOffsetOut] += pow(in[nOffsetIn], 2);
 				}
 			}
 
 			out[nOffsetOut] = sqrt(out[nOffsetOut] / pow(window, 2));
+			//printf("out[%d] [%d][%d] = %d\n", nOffsetOut,nRowIdxIn, nColIdxIn, out[nOffsetOut]
+			//		);
 		}
 
 	}
+
+	//printf("*************\n");
+	//printf("printing %dx%d\n", nColsOut, nRowsOut);
+	//printMatrix(out, nColsOut, nRowsOut);
+	//printf("*************\n");
 }
 
 void runSerial()
@@ -71,7 +85,7 @@ void runSerial()
 
 	createArray(a);
 
-	ComputeSerial(b, a, WINDOW, ROWS_MATRIX, COLS_MATRIX, ROWS_OUT, COLS_OUT);
+	Compute(b, a, WINDOW, ROWS_MATRIX, COLS_MATRIX, ROWS_OUT, COLS_OUT);
 
 //Print results
 	printf("Output Matrix:\n");
@@ -80,117 +94,121 @@ void runSerial()
 
 void runParallel()
 {
-	/*
-	 int a[ROWS_WIN * COLS_WIN]; // input matrix a
-	 int b[ROWS_MATRIX * COLS_MATRIX]; // input matrix B
-	 int c[ROWS_WIN * COLS_MATRIX]; // output matrix c'
-	 int nThreads; //total number of threads operating
-	 int nThreadId; //current instance ID
+	int a[ROWS_MATRIX * COLS_MATRIX]; // input matrix
+	int b[ROWS_OUT * COLS_OUT]; // output matrix
 
-	 MPI_Comm_rank(MPI_COMM_WORLD, &nThreadId);
-	 MPI_Comm_size(MPI_COMM_WORLD, &nThreads);
-	 if (nThreads < 2)
-	 {
-	 printf("Need at least two MPI tasks. Quitting...\n");
-	 int rc;
-	 MPI_Abort(MPI_COMM_WORLD, rc);
-	 exit(1);
-	 }
+	int nThreads; //total number of threads operating
+	int nThreadId; //current instance ID
 
-	 MPI_Status status;
+	MPI_Comm_rank(MPI_COMM_WORLD, &nThreadId);
+	MPI_Comm_size(MPI_COMM_WORLD, &nThreads);
+	if (nThreads < 2)
+	{
+		printf("Need at least two MPI tasks. Quitting...\n");
+		int rc;
+		MPI_Abort(MPI_COMM_WORLD, rc);
+		exit(1);
+	}
 
-	 if (nThreadId == MASTER_THREAD_ID)
-	 {
-	 printf("***Running Parallel Version***\n");
+	MPI_Status status;
 
-	 createArrays(a, b);
+	if (nThreadId == MASTER_THREAD_ID)
+	{
+		printf("***Running Parallel Version***\n");
 
-	 //executed by the master
-	 printf("Application running with %d threads.\n", nThreads);
-	 //printf("Initializing arrays...\n");
+		createArray(a);
 
-	 uint nWorkerThreads = nThreads - 1;
-	 int averow = ROWS_WIN / nWorkerThreads;
-	 int extra = ROWS_WIN % nWorkerThreads;
-	 int offset(0);
-	 int nRows(0);
-	 //send data to slaves
-	 MessageProvider nProvider = MASTER;
-	 for (uint nRecvrThreadId = 1; nRecvrThreadId <= nWorkerThreads;
-	 nRecvrThreadId++)
-	 {
-	 nRows = (nRecvrThreadId <= extra) ? averow + 1 : averow;
-	 //printf("Sending %d rows to task %d offset=%d\n", nRows, nRecvrThreadId,
-	 //		offset);
-	 MPI_Send(&offset, 1, MPI_INT, nRecvrThreadId, nProvider,
-	 MPI_COMM_WORLD);
-	 MPI_Send(&nRows, 1, MPI_INT, nRecvrThreadId, nProvider,
-	 MPI_COMM_WORLD);
-	 MPI_Send(&a[offset * COLS_WIN], nRows * COLS_WIN, MPI_INT,
-	 nRecvrThreadId, nProvider, MPI_COMM_WORLD);
-	 MPI_Send(&b, COLS_WIN * COLS_MATRIX, MPI_INT, nRecvrThreadId,
-	 nProvider, MPI_COMM_WORLD);
-	 offset = offset + nRows;
-	 }
+		//executed by the master
+		//printf("Application running with %d threads.\n", nThreads);
 
-	 //receive results from slave threads
-	 nProvider = SLAVE;
-	 for (uint i = 1; i <= nWorkerThreads; i++)
-	 {
-	 int source = i;
-	 MPI_Recv(&offset, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
-	 &status);
-	 MPI_Recv(&nRows, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
-	 &status);
-	 MPI_Recv(&c[offset * COLS_MATRIX], nRows * COLS_MATRIX, MPI_INT,
-	 source, nProvider, MPI_COMM_WORLD, &status);
-	 //printf("Received results from task %d\n", source);
-	 }
+		uint nWorkerThreads = nThreads - 1;
+		int averow = ( ROWS_MATRIX - (WINDOW - 1)) / nWorkerThreads;
+		int extra = ( ROWS_MATRIX - (WINDOW - 1)) % nWorkerThreads;
+		int offset(0);
+		int nRows(0);
+		//send data to slaves
+		MessageProvider nProvider = MASTER;
+		for (uint nRecvrThreadId = 1; nRecvrThreadId <= nWorkerThreads;
+				nRecvrThreadId++)
+		{
+			nRows = (nRecvrThreadId <= extra) ? averow + 1 : averow;
+			//add two rows for window coverage
 
-	 //Print results
-	 printf("Output Matrix:\n");
-	 printMatrix(c, COLS_MATRIX, ROWS_WIN);
+			if (nRows)
+			{
+				nRows += WINDOW - 1;
+			}
 
-	 }
-	 else
-	 {
-	 //executed by the workers
-	 MessageProvider nProvider = MASTER;
+			MPI_Send(&offset, 1, MPI_INT, nRecvrThreadId, nProvider,
+					MPI_COMM_WORLD);
+			MPI_Send(&nRows, 1, MPI_INT, nRecvrThreadId, nProvider,
+					MPI_COMM_WORLD);
+			MPI_Send(&a[offset * COLS_MATRIX], nRows * COLS_MATRIX, MPI_INT,
+					nRecvrThreadId, nProvider, MPI_COMM_WORLD);
 
-	 int nRows(0);
-	 int offset(0);
-	 //receive the data from master
-	 MPI_Recv(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
-	 &status);
-	 MPI_Recv(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
-	 &status);
-	 MPI_Recv(&a, nRows * COLS_WIN, MPI_INT, MASTER, nProvider,
-	 MPI_COMM_WORLD, &status);
-	 MPI_Recv(&b, COLS_WIN * COLS_MATRIX, MPI_INT, MASTER, nProvider,
-	 MPI_COMM_WORLD, &status);
+			//printf("Sending %d rows to task %d offset=%d, a[%d]-a[%d]\n", nRows,
+			//		nRecvrThreadId, offset, offset * COLS_MATRIX,
+			//		(offset * COLS_MATRIX + nRows * COLS_MATRIX) - 1);
 
-	 //do the multiplication
-	 for (uint k = 0; k < COLS_MATRIX; k++)
-	 {
-	 for (uint i = 0; i < nRows; i++)
-	 {
-	 c[i * nRows + k] = 0;
-	 for (uint j = 0; j < COLS_MATRIX; j++)
-	 {
-	 c[i * nRows + k] = c[i * nRows + k]
-	 + a[i * COLS_WIN + j] * b[j * COLS_MATRIX + k];
-	 }
-	 }
-	 }
+			offset = offset + (nRows - (WINDOW - 1));
+		}
 
-	 //send the data back to the master
-	 nProvider = SLAVE;
-	 MPI_Send(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
-	 MPI_Send(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
-	 MPI_Send(&c, nRows * COLS_MATRIX, MPI_INT, MASTER, nProvider,
-	 MPI_COMM_WORLD);
-	 }
-	 */
+		//receive results from slave threads
+		nProvider = SLAVE;
+		for (uint i = 1; i <= nWorkerThreads; i++)
+		{
+			int source = i;
+			MPI_Recv(&offset, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
+					&status);
+			MPI_Recv(&nRows, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
+					&status);
+			MPI_Recv(&b[offset * COLS_OUT], nRows * COLS_OUT, MPI_INT, source,
+					nProvider, MPI_COMM_WORLD, &status);
+			//printf("Received results from task %d, row %d b[%d]\n", source,offset,offset * COLS_OUT);
+		}
+
+		//Print results
+		printf("Output Matrix:\n");
+		printMatrix(b, COLS_OUT, ROWS_OUT);
+
+	}
+	else
+	{
+		//executed by the workers
+		MessageProvider nProvider = MASTER;
+
+		int nRows(0);
+		int offset(0);
+		//receive the data from master
+		MPI_Recv(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
+				&status);
+		MPI_Recv(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
+				&status);
+		MPI_Recv(&a, nRows * COLS_MATRIX, MPI_INT, MASTER, nProvider,
+				MPI_COMM_WORLD, &status);
+
+		//printf("Thread %d: Offset %d, nRows %d\n", nThreadId, offset, nRows);
+
+		Compute(b, a, WINDOW, nRows, COLS_MATRIX, nRows - (WINDOW - 1),
+				COLS_OUT);
+		//printf("Thread %d: Prepare to send back\n", nThreadId);
+
+		//send the data back to the master
+		nProvider = SLAVE;
+		if (nRows)
+		{
+			nRows = nRows - (WINDOW - 1);
+		}
+
+		//printf("Thread %d: Prepare to send back %d rows. %d \n", nThreadId,
+		//		nRows, nRows * COLS_OUT);
+
+		MPI_Send(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+		MPI_Send(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
+		MPI_Send(&b, nRows * COLS_OUT, MPI_INT, MASTER, nProvider,
+				MPI_COMM_WORLD);
+	}
+
 }
 
 int main(int argc, char *argv[])

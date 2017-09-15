@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include "MatrixUtilities.h"
 
-#define ROWS_A 5                 /* number of nRows in matrix A */
-#define COLS_A 3                 /* number of columns in matrix A */
+#define ROWS_A 512                 /* number of nRows in matrix A */
+#define COLS_A 512                 /* number of columns in matrix A */
 #define ROWS_B COLS_A            /* number of nRows in matrix B */
-#define COLS_B 5                 /* number of columns in matrix B */
+#define COLS_B 512                 /* number of columns in matrix B */
 #define MASTER_THREAD_ID 0
 
 using namespace MatrixUtilSpace;

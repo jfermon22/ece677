@@ -9,7 +9,7 @@ fi
 
 ./mean_filter --serial > tmpserial.txt
 
-mpirun -n 10 matrix_multiply > tmpparallel.txt
+mpirun -n 10 mean_filter > tmpparallel.txt
 
 sed -i -e "1d" tmpserial.txt
 sed -i -e "1d" tmpparallel.txt
