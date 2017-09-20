@@ -1,6 +1,7 @@
-#include "mpi.h"
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <cstring>
 #include "MatrixUtilities.h"
 #include "MyTimer.h"
 
@@ -59,7 +60,7 @@ void runSerial()
 
 	timer.Stop();
 
-	printf("Time: %lf\n",timer.Elapsed());
+	printf("Time: %lf\n", timer.Elapsed());
 
 }
 
@@ -68,26 +69,12 @@ void runSerial()
  */
 void runParallel()
 {
-	MPI_Barrier (MPI_COMM_WORLD); /* IMPORTANT */
-	double start = MPI_Wtime();
 
 	int a[ROWS_A * COLS_A]; // input matrix a
 	int b[ROWS_B * COLS_B]; // input matrix B
 	int c[ROWS_A * COLS_B]; // output matrix c'
 	int nThreads; //total number of threads operating
 	int nThreadId; //current instance ID
-
-	MPI_Comm_rank(MPI_COMM_WORLD, &nThreadId);
-	MPI_Comm_size(MPI_COMM_WORLD, &nThreads);
-	if (nThreads < 2)
-	{
-		printf("Need at least two MPI tasks. Quitting...\n");
-		int rc;
-		MPI_Abort(MPI_COMM_WORLD, rc);
-		exit(1);
-	}
-
-	MPI_Status status;
 
 	if (nThreadId == MASTER_THREAD_ID)
 	{
@@ -105,37 +92,8 @@ void runParallel()
 		int offset(0);
 		int nRows(0);
 		//send data to slaves
-		MessageProvider nProvider = MASTER;
-		for (uint nRecvrThreadId = 1; nRecvrThreadId <= nWorkerThreads;
-				nRecvrThreadId++)
-		{
-			nRows = (nRecvrThreadId <= extra) ? averow + 1 : averow;
-			//printf("Sending %d rows to task %d offset=%d\n", nRows, nRecvrThreadId,
-			//		offset);
-			MPI_Send(&offset, 1, MPI_INT, nRecvrThreadId, nProvider,
-					MPI_COMM_WORLD);
-			MPI_Send(&nRows, 1, MPI_INT, nRecvrThreadId, nProvider,
-					MPI_COMM_WORLD);
-			MPI_Send(&a[offset * COLS_A], nRows * COLS_A, MPI_INT,
-					nRecvrThreadId, nProvider, MPI_COMM_WORLD);
-			MPI_Send(&b, COLS_A * COLS_B, MPI_INT, nRecvrThreadId, nProvider,
-					MPI_COMM_WORLD);
-			offset = offset + nRows;
-		}
 
 		//receive results from slave threads
-		nProvider = SLAVE;
-		for (uint i = 1; i <= nWorkerThreads; i++)
-		{
-			int source = i;
-			MPI_Recv(&offset, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
-					&status);
-			MPI_Recv(&nRows, 1, MPI_INT, source, nProvider, MPI_COMM_WORLD,
-					&status);
-			MPI_Recv(&c[offset * COLS_B], nRows * COLS_B, MPI_INT, source,
-					nProvider, MPI_COMM_WORLD, &status);
-			//printf("Received results from task %d\n", source);
-		}
 
 		//Print results
 		printf("Output Matrix:\n");
@@ -150,31 +108,13 @@ void runParallel()
 		int nRows(0);
 		int offset(0);
 		//receive the data from master
-		MPI_Recv(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
-				&status);
-		MPI_Recv(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
-				&status);
-		MPI_Recv(&a, nRows * COLS_A, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD,
-				&status);
-		MPI_Recv(&b, COLS_A * COLS_B, MPI_INT, MASTER, nProvider,
-				MPI_COMM_WORLD, &status);
 
 		//do the multiplication
 		multiply(c, a, b, ROWS_A, COLS_A, ROWS_B, COLS_B, nRows,
 		COLS_B);
-
-		//send the data back to the master
-		nProvider = SLAVE;
-		MPI_Send(&offset, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
-		MPI_Send(&nRows, 1, MPI_INT, MASTER, nProvider, MPI_COMM_WORLD);
-		MPI_Send(&c, nRows * COLS_B, MPI_INT, MASTER, nProvider,
-				MPI_COMM_WORLD);
 	}
-
-	MPI_Barrier(MPI_COMM_WORLD); /* IMPORTANT */
-	double end = MPI_Wtime();
-	if (!nThreadId)
-		printf("Time: %lf\n", end - start);
+	//if (!nThreadId)
+	//printf("Time: %lf\n", end - start);
 
 }
 
@@ -195,8 +135,6 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		MPI_Init(&argc, &argv);
 		runParallel();
-		MPI_Finalize();
 	}
 }

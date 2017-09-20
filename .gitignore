@@ -3,6 +3,7 @@
 
 
 build_dir
+outputs
 
 *.e*
 *.o*

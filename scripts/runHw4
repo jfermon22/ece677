@@ -8,14 +8,14 @@ SUFFIX=""
 fi
 
 
-PROJ_1="subHw2"
+PROJ_1="subHw4"
 PROJ_2="mean_filter"
 
-RUNSC1="subHw2$SUFFIX"
+RUNSC1="subHw4$SUFFIX"
 RUNSC2="sub_mean$SUFFIX"
 
-ERR_OUT1="hw2.e"
-CONS_OUT1="hw2.o"
+ERR_OUT1="hw4.e"
+CONS_OUT1="hw4.o"
 
 SCENARIOS="1"
 

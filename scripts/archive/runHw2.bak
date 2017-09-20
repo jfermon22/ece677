@@ -8,16 +8,16 @@ SUFFIX=""
 fi
 
 
-PROJ_1="subHw2"
+PROJ_1="matrix_multiply"
 PROJ_2="mean_filter"
 
-RUNSC1="subHw2$SUFFIX"
+RUNSC1="sub_matrix$SUFFIX"
 RUNSC2="sub_mean$SUFFIX"
 
-ERR_OUT1="hw2.e"
-CONS_OUT1="hw2.o"
+ERR_OUT1="$PROJ_1.e"
+CONS_OUT1="$PROJ_1.o"
 
-SCENARIOS="1"
+SCENARIOS="1 2"
 
 FAILED_SCENARIOS=false
 #parse command line args
@@ -48,13 +48,8 @@ for SCENARIO in $SCENARIOS; do
         ;;
    esac
 
-   for FILE in   $ERR_OUTPUT_FILE* $CONS_OUTPUT_FILE*; do
-      if [ -e $FILE ]; then
-         rm $FILE
-      fi
-   done
    #set the output directory
-   #OUT_DIR=$PROJECT\_out_`date +%Y%m%d`
+   OUT_DIR=$PROJECT\_out_`date +%Y%m%d`
 
    #loop through the data sets
    for RUN in 1; do 
@@ -69,19 +64,6 @@ for SCENARIO in $SCENARIOS; do
          qsub $RUNSCRIPT.sh
       fi
       echo "-------------------------"
-      
-      sleep 1;
-      
-      while [[ `qstat -a -s -u $USER` != "" ]]; do
-         qstat -a -s -u $USER
-         echo
-         sleep 1
-      done
-      
-      OUTPUT_DIR=`ls -lrt ../outputs/ | tail -1 | awk '{print $9}'`
-      echo "Output_Dir:  ../outputs/$OUTPUT_DIR"
-      mv $ERR_OUTPUT_FILE* $CONS_OUTPUT_FILE* ../outputs/$OUTPUT_DIR
-      ./printTimes.sh $OUTPUT_DIR
       
    done #end of data set
 
