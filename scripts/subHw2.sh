@@ -36,11 +36,14 @@ mkdir -p $OUTPUT_DIR
 for EXEC_NAME in "matrix_multiply" "mean_filter"
 do
 
+BASELINE_EXEC_NAME=$EXEC_NAME\_hw2
+BASELINE_EXEC=~/ece677/build_dir/hw2/$BASELINE_EXEC_NAME
+EXEC_NAME=$EXEC_NAME\_$EXEC_DIR
 EXEC=~/ece677/build_dir/$EXEC_DIR/$EXEC_NAME
 OUTPUT=$EXEC_NAME\_out
-OUTPUT_CHECK=$EXEC_NAME\_serial.txt
+BASELINE_OUT=$BASELINE_EXEC_NAME\_serial.txt
 
-$EXEC --serial > $OUTPUT_CHECK
+$BASELINE_EXEC --serial > $BASELINE_OUT
 for NODES in 02 04 08 16 32 64
 do
    
@@ -52,13 +55,13 @@ do
 
    mpirun -n $NODES $EXEC > $OUTPUT
    
-   cp $OUTPUT_CHECK tmp$OUTPUT_CHECK
+   cp $BASELINE_OUT tmp$BASELINE_OUT
    cp $OUTPUT tmp$OUTPUT
    
-   sed -i -e '1d;$d' tmp$OUTPUT_CHECK
+   sed -i -e '1d;$d' tmp$BASELINE_OUT
    sed -i -e '1d;$d' tmp$OUTPUT
 
-   if [[ `diff tmp$OUTPUT_CHECK tmp$OUTPUT` == "" ]]; then
+   if [[ `diff tmp$BASELINE_OUT tmp$OUTPUT` == "" ]]; then
        echo "$NODES::Success"
        echo "$NODES::Success" > $EXEC_NAME\_status_$NODES.txt
    else
@@ -69,7 +72,7 @@ do
    mv $OUTPUT $OUTPUT_DIR/$OUTPUT\_$NODES.txt
    mv $EXEC_NAME\_status_$NODES.txt $OUTPUT_DIR
    
-   rm tmp$OUTPUT tmp$OUTPUT_CHECK
+   rm tmp$OUTPUT tmp$BASELINE_OUT
    
    for FILE in  $EXEC_NAME.e* $EXEC_NAME.o* $OUTPUT; do
       if [ -e $FILE ]; then
@@ -79,6 +82,6 @@ do
 
 done
 
-mv  $OUTPUT_CHECK $OUTPUT_DIR/
+mv  $BASELINE_OUT $OUTPUT_DIR/
 
 done

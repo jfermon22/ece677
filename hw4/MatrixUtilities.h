@@ -1,13 +1,14 @@
 #ifndef MY_MATRIX_UTILITIES_H
 #define MY_MATRIX_UTILITIES_H
 
+#include <omp.h>
+
 namespace MatrixUtilSpace
 {
 
-enum MatrixType {
-	ADD_OFFSETS,
-	MULT_OFFSETS,
-	INCREMENT_OFFSET,
+enum MatrixType
+{
+	ADD_OFFSETS, MULT_OFFSETS, INCREMENT_OFFSET,
 };
 
 /*
@@ -16,11 +17,12 @@ enum MatrixType {
 void populateMatrix(int *matrix, int nCols, int nRows, MatrixType type)
 {
 	uint nOffset(0);
+#pragma omp parallel for collapse(2)
 	for (uint i = 0; i < nRows; i++)
 	{
 		for (uint j = 0; j < nCols; j++)
 		{
-			switch(type)
+			switch (type)
 			{
 			case ADD_OFFSETS:
 				matrix[i * nCols + j] = (i + j) % 10;
@@ -54,6 +56,7 @@ void printMatrix(int *matrix, int nCols, int nRows)
 void multiply(int *out, int *in1, int *in2, int nRows1, int nCols1, int nRows2,
 		int nCols2, int nRowsOut, int nColsOut)
 {
+#pragma omp parallel for collapse(2)
 	for (uint iii = 0; iii < nRowsOut; ++iii)
 	{
 		for (uint jjj = 0; jjj < nColsOut; ++jjj)
@@ -67,6 +70,7 @@ void multiply(int *out, int *in1, int *in2, int nRows1, int nCols1, int nRows2,
 		}
 	}
 }
+
 }
 ;
 

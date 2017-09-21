@@ -7,23 +7,17 @@
 #include "MyTimer.h"
 
 #define WINDOW 3                 /* number of nRows in matrix A */
-#define ROWS_MATRIX 256           /* number of nRows in matrix B */
+#define ROWS_MATRIX 256          /* number of nRows in matrix B */
 #define COLS_MATRIX ROWS_MATRIX                 /* number of columns in matrix B */
 const uint ROWS_OUT = (ROWS_MATRIX - WINDOW) + 1;
 const uint COLS_OUT = (COLS_MATRIX - WINDOW) + 1;
-#define MASTER_THREAD_ID 0
 
 using namespace MatrixUtilSpace;
-
-enum MessageProvider
-{
-	MASTER, SLAVE,
-};
 
 void createArray(int *a)
 {
 	// initialize the array
-	populateMatrix(a, COLS_MATRIX, ROWS_MATRIX, INCREMENT_OFFSET);
+	populateMatrix(a, COLS_MATRIX, ROWS_MATRIX, ADD_OFFSETS);
 
 	//print the arrays
 	printf("Matrix:\n");
@@ -40,21 +34,23 @@ void Compute(int *out, int *in, int window, int nRowsIn, int nColsIn,
 	//		window, nRowsIn, nColsIn, nRowsOut, nColsOut);
 
 	//loop through rows in input matrix
-	for (int nRowIdxIn(0); nRowIdxIn <= nRowsIn - window; nRowIdxIn++)
+#pragma omp parallel for collapse(2)
+	for (int nRowIdxIn = 0; nRowIdxIn <= nRowsIn - window; nRowIdxIn++)
 	{
 		//printf("Rows in %d:  %d<= %d\n ", nRowsIn, nRowIdxIn, nRowsIn - window);
 		//loop through indeces in row of input matrix
-		for (int nColIdxIn(0); nColIdxIn <= nColsIn - window; nColIdxIn++)
+		for (int nColIdxIn = 0; nColIdxIn <= nColsIn - window; nColIdxIn++)
 		{
 			//generate output matrix offset
 			uint nOffsetOut = nRowIdxIn * nColsOut + nColIdxIn;
 
 			out[nOffsetOut] = 0;
 			//loop through rows in window
-			for (int nRowIdxWin(0); nRowIdxWin < window; nRowIdxWin++)
+#pragma omp parallel for collapse(2)
+			for (int nRowIdxWin = 0; nRowIdxWin < window; nRowIdxWin++)
 			{
 				//loop through items in row in window
-				for (int nColIdxWin(0); nColIdxWin < window; nColIdxWin++)
+				for (int nColIdxWin = 0; nColIdxWin < window; nColIdxWin++)
 				{
 					//generate in matrix offset
 					uint nOffsetIn = (nRowIdxIn + nRowIdxWin) * nColsIn
@@ -78,103 +74,85 @@ void Compute(int *out, int *in, int window, int nRowsIn, int nColsIn,
 	//printf("*************\n");
 }
 
-void runSerial()
+
+/*
+ void runParallel()
+ {
+
+ int a[ROWS_MATRIX * COLS_MATRIX]; // input matrix
+ int b[ROWS_OUT * COLS_OUT]; // output matrix
+
+ int nThreads; //total number of threads operating
+ int nThreadId; //current instance ID
+
+ if (nThreadId == MASTER_THREAD_ID)
+ {
+ printf("***Running Parallel Version***\n");
+
+ createArray(a);
+
+ //executed by the master
+ //printf("Application running with %d threads.\n", nThreads);
+
+ uint nWorkerThreads = nThreads - 1;
+ int averow = ( ROWS_MATRIX - (WINDOW - 1)) / nWorkerThreads;
+ int extra = ( ROWS_MATRIX - (WINDOW - 1)) % nWorkerThreads;
+ int offset(0);
+ int nRows(0);
+ //send data to slaves
+
+ //receive results from slave threads
+
+ //Print results
+ printf("Output Matrix:\n");
+ printMatrix(b, COLS_OUT, ROWS_OUT);
+
+ }
+ else
+ {
+ //executed by the workers
+ MessageProvider nProvider = MASTER;
+
+ int nRows(0);
+ int offset(0);
+ //receive the data from master
+
+ Compute(b, a, WINDOW, nRows, COLS_MATRIX, nRows - (WINDOW - 1),
+ COLS_OUT);
+ //printf("Thread %d: Prepare to send back\n", nThreadId);
+
+ //send the data back to the master
+
+ }
+
+ //if (!nThreadId)
+ //	printf("Time: %lf\n", end - start);
+
+ }
+ */
+
+int main(int argc, char *argv[])
 {
+	char const* tmp = getenv("OMP_NUM_THREADS");
+		printf("***Runnin on %s CPUs***\n", tmp);
 
-	MyTimer timer;
+		MyTimer timer;
 
-	timer.Start();
+		timer.Start();
 
-	int a[ROWS_MATRIX * COLS_MATRIX]; // input matrix
-	int b[ROWS_OUT * COLS_OUT]; // output matrix
-
-	printf("***Running Serial Version***\n");
-
-	createArray(a);
-
-	Compute(b, a, WINDOW, ROWS_MATRIX, COLS_MATRIX, ROWS_OUT, COLS_OUT);
-
-//Print results
-	printf("Output Matrix:\n");
-	printMatrix(b, COLS_OUT, ROWS_OUT);
-
-	timer.Stop();
-
-	printf("Time: %lf\n", timer.Elapsed());
-}
-
-void runParallel()
-{
-
-	int a[ROWS_MATRIX * COLS_MATRIX]; // input matrix
-	int b[ROWS_OUT * COLS_OUT]; // output matrix
-
-	int nThreads; //total number of threads operating
-	int nThreadId; //current instance ID
-
-	if (nThreadId == MASTER_THREAD_ID)
-	{
-		printf("***Running Parallel Version***\n");
+		int a[ROWS_MATRIX * COLS_MATRIX]; // input matrix
+		int b[ROWS_OUT * COLS_OUT]; // output matrix
 
 		createArray(a);
 
-		//executed by the master
-		//printf("Application running with %d threads.\n", nThreads);
-
-		uint nWorkerThreads = nThreads - 1;
-		int averow = ( ROWS_MATRIX - (WINDOW - 1)) / nWorkerThreads;
-		int extra = ( ROWS_MATRIX - (WINDOW - 1)) % nWorkerThreads;
-		int offset(0);
-		int nRows(0);
-		//send data to slaves
-
-		//receive results from slave threads
+		Compute(b, a, WINDOW, ROWS_MATRIX, COLS_MATRIX, ROWS_OUT, COLS_OUT);
 
 		//Print results
 		printf("Output Matrix:\n");
 		printMatrix(b, COLS_OUT, ROWS_OUT);
 
-	}
-	else
-	{
-		//executed by the workers
-		MessageProvider nProvider = MASTER;
+		timer.Stop();
 
-		int nRows(0);
-		int offset(0);
-		//receive the data from master
-
-		Compute(b, a, WINDOW, nRows, COLS_MATRIX, nRows - (WINDOW - 1),
-				COLS_OUT);
-		//printf("Thread %d: Prepare to send back\n", nThreadId);
-
-		//send the data back to the master
-
-	}
-
-	//if (!nThreadId)
-	//	printf("Time: %lf\n", end - start);
-
-}
-
-int main(int argc, char *argv[])
-{
-	bool bUseSerial(false);
-	for (int i = 1; i < argc; i++)
-	{
-		if (strcmp(argv[i], "--serial") == 0)
-		{
-			bUseSerial = true;
-		}
-	}
-
-	if (bUseSerial)
-	{
-		runSerial();
-	}
-	else
-	{
-		runParallel();
-	}
+		printf("Time: %lf\n", timer.Elapsed());
 }
 

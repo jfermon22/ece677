@@ -10,8 +10,7 @@ set(CMAKE_BUILD_TYPE Debug)
 set(PROJ_NAMES matrix_multiply mean_filter)
 
 foreach(SINGLE_PROJ ${PROJ_NAMES})
-   add_executable(${SINGLE_PROJ} ${SINGLE_PROJ}_main.cpp)
-   target_link_libraries(${SINGLE_PROJ} ${MPI_LIBRARIES})
+   add_executable(${SINGLE_PROJ}_hw4 ${SINGLE_PROJ}_main.cpp)
    
    if (OPENMP_FOUND)
       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")

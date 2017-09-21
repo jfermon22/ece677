@@ -26,12 +26,12 @@ void createArrays(int *a, int *b)
 	populateMatrix(b, COLS_B, ROWS_B, MULT_OFFSETS);
 
 	//print the arrays
-//	printf("Matrix A:\n");
-//	printMatrix(a, COLS_A, ROWS_A);
-//	printf("\n");
-//	printf("Matrix B:\n");
-//	printMatrix(b, COLS_B, ROWS_B);
-//	printf("\n");
+	printf("Matrix A:\n");
+	printMatrix(a, COLS_A, ROWS_A);
+	printf("\n");
+	printf("Matrix B:\n");
+	printMatrix(b, COLS_B, ROWS_B);
+	printf("\n");
 }
 
 /*

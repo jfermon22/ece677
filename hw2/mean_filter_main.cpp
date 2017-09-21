@@ -22,7 +22,7 @@ enum MessageProvider
 void createArray(int *a)
 {
 	// initialize the array
-	populateMatrix(a, COLS_MATRIX, ROWS_MATRIX, INCREMENT_OFFSET);
+	populateMatrix(a, COLS_MATRIX, ROWS_MATRIX, ADD_OFFSETS);
 
 	//print the arrays
 	printf("Matrix:\n");
